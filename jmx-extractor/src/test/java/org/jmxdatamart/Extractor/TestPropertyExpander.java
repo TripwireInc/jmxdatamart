@@ -34,6 +34,8 @@ import java.util.Properties;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 
 public class TestPropertyExpander {
 
@@ -139,6 +141,15 @@ public class TestPropertyExpander {
     PropertyExpander expander = expanderWithProperties("$name", "word begins");
 
     assertThat(expander.expand(before), equalTo("The first word begins a sentence"));
+  }
+
+  @Test
+  public void expandingNullStringReturnsNull() {
+    String before = null;
+
+    PropertyExpander expander = expanderWithProperties("$name", "word begins");
+
+    assertThat(expander.expand(before), is(nullValue()));
   }
 
 }

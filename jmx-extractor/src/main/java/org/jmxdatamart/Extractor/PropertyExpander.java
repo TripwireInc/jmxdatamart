@@ -50,6 +50,10 @@ public class PropertyExpander {
     private StringBuilder propertyName = new StringBuilder();
 
     public String expandPropertiesIn(String before) {
+      if (before == null) {
+        return null;
+      }
+
       for (char c : before.toCharArray()) {
         if (c == '$' && maybeInPropertyName) {
           // Two dollar signs together
