@@ -49,7 +49,7 @@ Then we use the settings2.xml to load these beans (settings2.xml is configurated
 
 |Extract And Load Everything|
 |Extract Using Settings|settings2.xml|
-|Load With Settings| loaderConfig.ini | From | . | URL | ${derby.url} | User Name | ${derby.username} | Password | ${derby.username}|
+|Load With Settings| loaderConfig.ini | From | ${fitnesse.working}/fitnesse-statistics | URL | ${derby.url} | User Name | ${derby.username} | Password | ${derby.username}|
 
 Finally, we verify that the statistics were loaded as expected
 

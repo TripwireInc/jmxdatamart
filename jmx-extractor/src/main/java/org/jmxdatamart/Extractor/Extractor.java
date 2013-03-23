@@ -94,7 +94,11 @@ public final class Extractor {
 
     hsql = new HypersqlHandler();
 	hsql.loadDriver(hsql.getDriver());
-    dbName = configData.getFolderLocation() + File.separator + "Extractor" + new SimpleDateFormat("yyyyMMddHHmmss").format(new java.util.Date());
+    String statsDirectory = configData.getFolderLocation();
+
+    logger.info("Extracting JMX Statistics to directory {}", statsDirectory);
+
+    dbName = statsDirectory + File.separator + "Extractor" + new SimpleDateFormat("yyyyMMddHHmmss").format(new java.util.Date());
     if (isPeriodicallyExtract()) {
       periodicallyExtract();
     } else {

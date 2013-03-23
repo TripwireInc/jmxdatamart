@@ -50,7 +50,8 @@ import java.util.List;
  */
 
 public class ExtractorSettings {
-    private final static org.slf4j.Logger logger = LoggerFactory.getLogger(Extractor.class);
+    private static final PropertyExpander expander = new PropertyExpander(System.getProperties());
+
     private long pollingRate;
     private String folderLocation;
     private String url;
@@ -81,7 +82,7 @@ public class ExtractorSettings {
      * @param folderLocation the folderLocation to set
      */
     public void setFolderLocation(String folderLocation) {
-        this.folderLocation = folderLocation;
+        this.folderLocation = expander.expand(folderLocation);
     }
 
     /**
