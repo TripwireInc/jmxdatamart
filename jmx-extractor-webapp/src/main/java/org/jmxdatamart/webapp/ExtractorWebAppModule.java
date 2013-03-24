@@ -46,6 +46,9 @@ public class ExtractorWebAppModule extends AbstractModule {
   @Override
   protected void configure() {
     bind(SettingsFileProvider.class).to(SettingsFileFromJndi.class);
+    bind(LogbackConfigurationFileProvider.class).to(LogbackConfigurationFromJndi.class);
+
+    bind(ConfigureLogbackLogging.class).asEagerSingleton();
     bind(Extractor.class).asEagerSingleton();
   }
 
