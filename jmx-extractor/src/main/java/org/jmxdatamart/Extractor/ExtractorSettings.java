@@ -31,9 +31,15 @@ package org.jmxdatamart.Extractor;
 import com.thoughtworks.xstream.XStream;
 import com.thoughtworks.xstream.io.xml.DomDriver;
 import org.jmxdatamart.common.DataType;
-import java.io.*;
-import java.util.*;
 import org.slf4j.LoggerFactory;
+
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
 
 
 
@@ -43,48 +49,14 @@ import org.slf4j.LoggerFactory;
  * @author Binh Tran <mynameisbinh@gmail.com>
  */
 
-public class Settings {
-    private final static org.slf4j.Logger logger = LoggerFactory.getLogger(Extractor.class);
+public class ExtractorSettings {
+    private static final PropertyExpander expander = new PropertyExpander(System.getProperties());
+
     private long pollingRate;
     private String folderLocation;
     private String url;
     private List<MBeanData> beans;
 
-    @Override
-    public int hashCode() {
-        int hash = 7;
-        hash = 67 * hash + (int) (this.pollingRate ^ (this.pollingRate >>> 32));
-        hash = 67 * hash + (this.folderLocation != null ? this.folderLocation.hashCode() : 0);
-        hash = 67 * hash + (this.url != null ? this.url.hashCode() : 0);
-        hash = 67 * hash + (this.beans != null ? this.beans.hashCode() : 0);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
-        final Settings other = (Settings) obj;
-        if (this.pollingRate != other.pollingRate) {
-            return false;
-        }
-        if ((this.folderLocation == null) ? (other.folderLocation != null) : !this.folderLocation.equals(other.folderLocation)) {
-            return false;
-        }
-        if ((this.url == null) ? (other.url != null) : !this.url.equals(other.url)) {
-            return false;
-        }
-        if (this.beans != other.beans && (this.beans == null || !this.beans.equals(other.beans))) {
-            return false;
-        }
-        return true;
-    }
-    
-    
     /**
      * @return the pollingRate
      */
@@ -110,7 +82,7 @@ public class Settings {
      * @param folderLocation the folderLocation to set
      */
     public void setFolderLocation(String folderLocation) {
-        this.folderLocation = folderLocation;
+        this.folderLocation = expander.expand(folderLocation);
     }
 
     /**
@@ -141,11 +113,11 @@ public class Settings {
         this.beans = beans;
     }
     
-    public Settings() {
+    public ExtractorSettings() {
         XStream xstream = new XStream(new DomDriver());
-        xstream.aliasField("BeanList", Settings.class, "beans");
+        xstream.aliasField("BeanList", ExtractorSettings.class, "beans");
         xstream.aliasField("AttributeList", MBeanData.class, "attributes");
-        xstream.alias("Settings", Settings.class);
+        xstream.alias("Settings", ExtractorSettings.class);
         xstream.alias("Bean", MBeanData.class);
         xstream.alias("Attribute", Attribute.class);
         beans = new ArrayList<MBeanData>();
@@ -153,47 +125,47 @@ public class Settings {
     
     public String toXML() {
         XStream xstream = new XStream(new DomDriver());
-        xstream.aliasField("BeanList", Settings.class, "beans");
+        xstream.aliasField("BeanList", ExtractorSettings.class, "beans");
         xstream.aliasField("AttributeList", MBeanData.class, "attributes");
-        xstream.alias("Settings", Settings.class);
+        xstream.alias("Settings", ExtractorSettings.class);
         xstream.alias("Bean", MBeanData.class);
         xstream.alias("Attribute", Attribute.class);
         
         return xstream.toXML(this);
     }
     
-    public static Settings fromXML(String s) {
+    public static ExtractorSettings fromXML(String s) {
         XStream xstream = new XStream(new DomDriver());
-        xstream.aliasField("BeanList", Settings.class, "beans");
+        xstream.aliasField("BeanList", ExtractorSettings.class, "beans");
         xstream.aliasField("AttributeList", MBeanData.class, "attributes");
-        xstream.alias("Settings", Settings.class);
+        xstream.alias("Settings", ExtractorSettings.class);
         xstream.alias("Bean", MBeanData.class);
         xstream.alias("Attribute", Attribute.class);
         
-        Settings settings = (Settings)xstream.fromXML(s);
+        ExtractorSettings settings = (ExtractorSettings)xstream.fromXML(s);
         try {
             settings.check();
         } catch (IllegalArgumentException ex) {
-            LoggerFactory.getLogger(Settings.class).error("Setting is malformated", ex);
+            LoggerFactory.getLogger(ExtractorSettings.class).error("Setting is malformated", ex);
             throw new RuntimeException(ex);
         }
         return settings;
         
     }
     
-    public static Settings fromXML(InputStream s) {
+    public static ExtractorSettings fromXML(InputStream s) {
         XStream xstream = new XStream(new DomDriver());
-        xstream.aliasField("BeanList", Settings.class, "beans");
+        xstream.aliasField("BeanList", ExtractorSettings.class, "beans");
         xstream.aliasField("AttributeList", MBeanData.class, "attributes");
-        xstream.alias("Settings", Settings.class);
+        xstream.alias("Settings", ExtractorSettings.class);
         xstream.alias("Bean", MBeanData.class);
         xstream.alias("Attribute", Attribute.class);
 
-        Settings settings = (Settings)xstream.fromXML(s);
+        ExtractorSettings settings = (ExtractorSettings)xstream.fromXML(s);
         try {
             settings.check();
         } catch (IllegalArgumentException ex) {
-            LoggerFactory.getLogger(Settings.class).error("Setting is malformated", ex);
+            LoggerFactory.getLogger(ExtractorSettings.class).error("Setting is malformated", ex);
             throw new RuntimeException(ex);
         }
         return settings;
@@ -330,7 +302,7 @@ public class Settings {
         for(char c : compCharArray){ 
             if (!Character.isLetterOrDigit(c)){
                 //System.out.println("Attribute " + compString + " contains non-alphanumeric character."); 
-                throw new IllegalArgumentException("Attribute " + compString + " contains non-alphanumeric character."); //***throw exception
+                throw new IllegalArgumentException("Attribute " + compString + " contains non-alphanumeric character: " + c); //***throw exception
                 //break; //*comment this out if throwing exception* if there was one non-alphanumeric character, no need to check the rest of the string    
             }
         }
@@ -344,11 +316,11 @@ public class Settings {
     public static void main( String[] args ) throws IOException
     {
         //Test reading file
-        Settings s1 = Settings.fromXML(new FileInputStream("Settings.xml"));
+        ExtractorSettings s1 = ExtractorSettings.fromXML(new FileInputStream("Settings.xml"));
         System.out.println(s1.toString());
         System.out.println("Read xml settings complete");
         
-        Settings s = new Settings();
+        ExtractorSettings s = new ExtractorSettings();
         s.setFolderLocation("\\project\\");
         s.setPollingRate(5);
         s.setUrl("service:jmx:rmi:///jndi/rmi://:9999/jmxrmi");
@@ -388,4 +360,39 @@ public class Settings {
         }
         
     }
+
+  @Override
+  public int hashCode() {
+      int hash = 7;
+      hash = 67 * hash + (int) (this.pollingRate ^ (this.pollingRate >>> 32));
+      hash = 67 * hash + (this.folderLocation != null ? this.folderLocation.hashCode() : 0);
+      hash = 67 * hash + (this.url != null ? this.url.hashCode() : 0);
+      hash = 67 * hash + (this.beans != null ? this.beans.hashCode() : 0);
+      return hash;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+      if (obj == null) {
+          return false;
+      }
+      if (getClass() != obj.getClass()) {
+          return false;
+      }
+      final ExtractorSettings other = (ExtractorSettings) obj;
+      if (this.pollingRate != other.pollingRate) {
+          return false;
+      }
+      if ((this.folderLocation == null) ? (other.folderLocation != null) : !this.folderLocation.equals(other.folderLocation)) {
+          return false;
+      }
+      if ((this.url == null) ? (other.url != null) : !this.url.equals(other.url)) {
+          return false;
+      }
+      if (this.beans != other.beans && (this.beans == null || !this.beans.equals(other.beans))) {
+          return false;
+      }
+      return true;
+  }
+
 }
