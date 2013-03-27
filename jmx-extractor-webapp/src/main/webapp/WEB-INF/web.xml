@@ -39,4 +39,8 @@
         <env-entry-name>jmxdatamart/settings-file</env-entry-name>
         <env-entry-type>java.lang.String</env-entry-type>
     </env-entry>
+    <env-entry>
+        <env-entry-name>logback/configuration-file</env-entry-name>
+        <env-entry-type>java.lang.String</env-entry-type>
+    </env-entry>
 </web-app>
