@@ -102,6 +102,9 @@
                                     <contextPath>/test-webapp</contextPath>
                                 </webapp>
                             </webapps>
+                            <systemProperties>
+                              <fitnesse.working>${fitnesse.working}</fitnesse.working>
+                            </systemProperties>
                         </configuration>
                     </execution>
                     <execution>

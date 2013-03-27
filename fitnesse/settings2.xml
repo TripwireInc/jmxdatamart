@@ -1,6 +1,6 @@
 <Settings>
   <pollingRate>-1</pollingRate>
-  <folderLocation>.</folderLocation>
+  <folderLocation>${fitnesse.working}/fitnesse-statistics</folderLocation>
   <BeanList>
     <Bean>
       <name>org.jmxdatamart.fitnesse:type=SimpleMBean,forTest=EndToEnd</name>
