@@ -30,13 +30,23 @@ package org.jmxdatamart.webapp;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.google.inject.servlet.GuiceServletContextListener;
+import org.jmxdatamart.Extractor.Extractor;
 
-public class ConfigureAndStartExtractor extends GuiceServletContextListener {
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+
+public class ConfigureAndStartExtractor implements ServletContextListener {
+
+  private Injector injector;
 
   @Override
-  protected Injector getInjector() {
-    return Guice.createInjector(new ExtractorWebAppModule());
+  public void contextInitialized(ServletContextEvent servletContextEvent) {
+    injector = Guice.createInjector(new ExtractorWebAppModule());
   }
 
+  @Override
+  public void contextDestroyed(ServletContextEvent servletContextEvent) {
+    Extractor extractor = injector.getInstance(Extractor.class);
+    extractor.stop();
+  }
 }
