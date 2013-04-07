@@ -30,7 +30,6 @@ package org.jmxdatamart.Extractor;
 import com.google.inject.Inject;
 import org.jmxdatamart.Extractor.MXBean.MultiLayeredAttribute;
 import org.jmxdatamart.common.DBException;
-import org.jmxdatamart.common.HypersqlHandler;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServerConnection;
@@ -39,32 +38,23 @@ import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
-import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public final class Extractor {
 
   private final ExtractorSettings configData;
+  private final StatisticsWriter writer;
   private MBeanServerConnection mbsc;
   private final org.slf4j.Logger logger = LoggerFactory.getLogger(Extractor.class);
-  private final Bean2DB bd = new Bean2DB();
-  private String dbName;
-  private HypersqlHandler hsql;
-  private Connection conn;
-  private final Lock connLock = new ReentrantLock();
   private Timer timer;
-  private final Properties props = new Properties();
 
   @Inject
-  public Extractor(ExtractorSettings configData) {
+  public Extractor(ExtractorSettings configData, StatisticsWriter writer) {
+    this.writer = writer;
     timer = null;
     this.configData = configData;
 
@@ -73,22 +63,13 @@ public final class Extractor {
     String statsDirectory = configData.getFolderLocation();
     logger.info("Extracting JMX Statistics to directory {}", statsDirectory);
 
-    createHypersqlHandler(statsDirectory);
+    writer.createHypersqlHandler(statsDirectory);
 
     if (isPeriodicallyExtracting()) {
       periodicallyExtract();
     } else {
       extract();
     }
-  }
-
-  private void createHypersqlHandler(String statsDirectory) {
-    props.put("username", "sa");
-    props.put("password", "whatever");
-    hsql = new HypersqlHandler();
-    hsql.loadDriver(hsql.getDriver());
-
-    dbName = statsDirectory + File.separator + "Extractor" + new SimpleDateFormat("yyyyMMddHHmmss").format(new java.util.Date());
   }
 
   private MBeanServerConnection getMBeanServerConnection() {
@@ -130,7 +111,7 @@ public final class Extractor {
   void extract() {
 
     try {
-      startWritingStatistics();
+      writer.startWritingStatistics();
 
       for (MBeanData beanData : this.configData.getBeans()) {
         if (beanData.isEnable()) {
@@ -162,7 +143,7 @@ public final class Extractor {
       logger.error("Error while importing to HSQL", ex);
       throw new RuntimeException(ex);
     } finally {
-      doneWritingStatistics();
+      writer.doneWritingStatistics();
     }
     logger.info("Extracted");
   }
@@ -182,51 +163,18 @@ public final class Extractor {
 
   private void writeStatistics(MBeanData beanData) throws SQLException, DBException {
     Map<Attribute, Object> statisticValues = MBeanExtract.extract(beanData, mbsc);
-    bd.export2DB(conn, beanData, statisticValues);
-  }
-
-  private void doneWritingStatistics() {
-    //      try {
-    hsql.shutdownDatabase(conn);
-//      } catch (SQLException e) {
-//        logger.error(e.getMessage(), e);
-//      }
-
-    HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-    conn = null;
-    connLock.unlock();
-  }
-
-  private void startWritingStatistics() {
-    connLock.lock();
-    conn = hsql.connectDatabase(dbName, props);
+    writer.writeStatistics(beanData, statisticValues);
   }
 
   public void stop() {
     logger.info("Stopping JMX Statistics Extractor");
 
     if (timer != null) {
-      closeHsqlConnection();
+      writer.closeHsqlConnection();
       timer.cancel();
     }
 
     logger.info("Stopped JMX Statistics Extractor");
-  }
-
-  private void closeHsqlConnection() {
-    try {
-      connLock.lock();
-      if (conn != null && !conn.isClosed()) {
-        hsql.shutdownDatabase(conn);
-        HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-      }
-
-    } catch (SQLException ex) {
-      logger.error("Error while closing conn during JVM shutdown", ex);
-
-    } finally {
-      connLock.unlock();
-    }
   }
 
   private class Extract extends TimerTask {
@@ -236,7 +184,7 @@ public final class Extractor {
       Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
         @Override
         public void run() {
-          closeHsqlConnection();
+          writer.closeHsqlConnection();
         }
       }));
     }
