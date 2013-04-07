@@ -29,7 +29,6 @@ package org.jmxdatamart.Extractor;
 
 import com.google.inject.Inject;
 import org.jmxdatamart.Extractor.MXBean.MultiLayeredAttribute;
-import org.jmxdatamart.common.DBException;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServerConnection;
@@ -41,7 +40,6 @@ import javax.management.remote.JMXServiceURL;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
-import java.sql.SQLException;
 import java.util.*;
 
 public final class Extractor {
@@ -55,15 +53,11 @@ public final class Extractor {
   @Inject
   public Extractor(ExtractorSettings configData, StatisticsWriter writer) {
     this.writer = writer;
-    timer = null;
     this.configData = configData;
 
     mbsc = getMBeanServerConnection();
 
-    String statsDirectory = configData.getFolderLocation();
-    logger.info("Extracting JMX Statistics to directory {}", statsDirectory);
-
-    writer.createHypersqlHandler(statsDirectory);
+    logger.info("Extracting JMX Statistics to directory {}", configData.getFolderLocation());
 
     if (isPeriodicallyExtracting()) {
       periodicallyExtract();
@@ -136,12 +130,8 @@ public final class Extractor {
         }
       }
 
-    } catch (SQLException ex) {
+    } catch (StatisticsWriterException ex) {
       logger.error("Error while importing to HSQL", ex);
-      throw new RuntimeException(ex);
-    } catch (DBException ex) {
-      logger.error("Error while importing to HSQL", ex);
-      throw new RuntimeException(ex);
     } finally {
       writer.doneWritingStatistics();
     }
@@ -161,7 +151,7 @@ public final class Extractor {
     return instances;
   }
 
-  private void writeStatistics(MBeanData beanData) throws SQLException, DBException {
+  private void writeStatistics(MBeanData beanData) {
     Map<Attribute, Object> statisticValues = MBeanExtract.extract(beanData, mbsc);
     writer.writeStatistics(beanData, statisticValues);
   }
@@ -170,7 +160,7 @@ public final class Extractor {
     logger.info("Stopping JMX Statistics Extractor");
 
     if (timer != null) {
-      writer.closeHsqlConnection();
+      writer.close();
       timer.cancel();
     }
 
@@ -184,7 +174,7 @@ public final class Extractor {
       Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
         @Override
         public void run() {
-          writer.closeHsqlConnection();
+          writer.close();
         }
       }));
     }

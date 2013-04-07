@@ -28,6 +28,7 @@
 
 package org.jmxdatamart.Extractor;
 
+import com.google.inject.Inject;
 import org.jmxdatamart.common.DBException;
 import org.jmxdatamart.common.HypersqlHandler;
 import org.slf4j.LoggerFactory;
@@ -42,33 +43,34 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class StatisticsWriter {
+  private final org.slf4j.Logger logger = LoggerFactory.getLogger(StatisticsWriter.class);
   private final Lock connLock = new ReentrantLock();
   private final Properties props = new Properties();
   private final Bean2DB bd = new Bean2DB();
-  private String dbName;
-  private HypersqlHandler hsql;
+  private final String dbName;
+  private final HypersqlHandler hsql;
   private Connection conn;
-  private final org.slf4j.Logger logger = LoggerFactory.getLogger(StatisticsWriter.class);
 
-  void createHypersqlHandler(String statsDirectory) {
+  @Inject
+  public StatisticsWriter(ExtractorSettings settings) {
     props.put("username", "sa");
     props.put("password", "whatever");
     hsql = new HypersqlHandler();
     hsql.loadDriver(hsql.getDriver());
 
+    String statsDirectory = settings.getFolderLocation();
     dbName = statsDirectory + File.separator + "Extractor" + new SimpleDateFormat("yyyyMMddHHmmss").format(new java.util.Date());
   }
 
   void doneWritingStatistics() {
-    //      try {
-    hsql.shutdownDatabase(conn);
-//      } catch (SQLException e) {
-//        logger.error(e.getMessage(), e);
-//      }
+    cleanupDatabaseConnection();
+    connLock.unlock();
+  }
 
+  private void cleanupDatabaseConnection() {
+    hsql.shutdownDatabase(conn);
     HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
     conn = null;
-    connLock.unlock();
   }
 
   void startWritingStatistics() {
@@ -76,12 +78,11 @@ public class StatisticsWriter {
     conn = hsql.connectDatabase(dbName, props);
   }
 
-  void closeHsqlConnection() {
+  void close() {
     try {
       connLock.lock();
       if (conn != null && !conn.isClosed()) {
-        hsql.shutdownDatabase(conn);
-        HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
+        cleanupDatabaseConnection();
       }
 
     } catch (SQLException ex) {
@@ -92,7 +93,13 @@ public class StatisticsWriter {
     }
   }
 
-  void writeStatistics(MBeanData beanData, Map<Attribute, Object> statisticValues) throws SQLException, DBException {
-    bd.export2DB(conn, beanData, statisticValues);
+  void writeStatistics(MBeanData beanData, Map<Attribute, Object> statisticValues) throws StatisticsWriterException {
+    try {
+      bd.export2DB(conn, beanData, statisticValues);
+    } catch (SQLException e) {
+      throw new StatisticsWriterException("While writing statistics to HSQL", e);
+    } catch (DBException e) {
+      throw new StatisticsWriterException("While writing statistics to HSQL", e);
+    }
   }
 }
