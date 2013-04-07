@@ -27,9 +27,10 @@
  */
 package org.jmxdatamart.Extractor;
 
+import org.slf4j.LoggerFactory;
+
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import org.slf4j.LoggerFactory;
 
 public class Main {
 
@@ -66,13 +67,13 @@ public class Main {
     Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
       @Override
       public void run() {
-        if (extractor.isPeriodicallyExtract()) {
+        if (extractor.isPeriodicallyExtracting()) {
           extractor.stop();
         }
       }
     }));
 
-    if (!extractor.isPeriodicallyExtract()) {
+    if (!extractor.isPeriodicallyExtracting()) {
       logger.info("Extractor is set to run once only!");
       return;
     }

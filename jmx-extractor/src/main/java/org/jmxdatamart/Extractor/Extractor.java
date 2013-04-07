@@ -75,7 +75,7 @@ public final class Extractor {
 
     createHypersqlHandler(statsDirectory);
 
-    if (isPeriodicallyExtract()) {
+    if (isPeriodicallyExtracting()) {
       periodicallyExtract();
     } else {
       extract();
@@ -123,7 +123,7 @@ public final class Extractor {
     timer.scheduleAtFixedRate(new Extract(), delay, rate);
   }
 
-  public boolean isPeriodicallyExtract() {
+  public boolean isPeriodicallyExtracting() {
     return this.configData.getPollingRate() > 0;
   }
 
@@ -203,20 +203,29 @@ public final class Extractor {
   }
 
   public void stop() {
+    logger.info("Stopping JMX Statistics Extractor");
+
     if (timer != null) {
-      try {
-        connLock.lock();
-        if (conn != null && !conn.isClosed()) {
-              hsql.shutdownDatabase(conn);
-              HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-            }
-      } catch (SQLException ex) {
-        LoggerFactory.getLogger(Extractor.class)
-                    .error("Error while closing conn durring JVM shutdown", ex);
-      } finally {
-        connLock.unlock();
-      }
+      closeHsqlConnection();
       timer.cancel();
+    }
+
+    logger.info("Stopped JMX Statistics Extractor");
+  }
+
+  private void closeHsqlConnection() {
+    try {
+      connLock.lock();
+      if (conn != null && !conn.isClosed()) {
+        hsql.shutdownDatabase(conn);
+        HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
+      }
+
+    } catch (SQLException ex) {
+      logger.error("Error while closing conn during JVM shutdown", ex);
+
+    } finally {
+      connLock.unlock();
     }
   }
 
@@ -227,18 +236,7 @@ public final class Extractor {
       Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
         @Override
         public void run() {
-          try {
-            connLock.lock();
-            if (conn != null && !conn.isClosed()) {
-              hsql.shutdownDatabase(conn);
-              HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-            }
-          } catch (SQLException ex) {
-            LoggerFactory.getLogger(Extractor.class)
-                    .error("Error while closing conn durring JVM shutdown", ex);
-          } finally {
-            connLock.unlock();
-          }
+          closeHsqlConnection();
         }
       }));
     }
