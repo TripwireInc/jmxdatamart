@@ -29,8 +29,6 @@ package org.jmxdatamart.Extractor;
 
 import com.google.inject.Inject;
 import org.jmxdatamart.Extractor.MXBean.MultiLayeredAttribute;
-import org.jmxdatamart.common.DBException;
-import org.jmxdatamart.common.HypersqlHandler;
 import org.slf4j.LoggerFactory;
 
 import javax.management.MBeanServerConnection;
@@ -39,44 +37,42 @@ import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
-import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.text.SimpleDateFormat;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
 
 public final class Extractor {
 
   private final ExtractorSettings configData;
+  private final StatisticsWriter writer;
   private MBeanServerConnection mbsc;
   private final org.slf4j.Logger logger = LoggerFactory.getLogger(Extractor.class);
-  private final Bean2DB bd = new Bean2DB();
-  private final String dbName;
-  private final HypersqlHandler hsql;
-  private Connection conn;
-  private final Lock connLock = new ReentrantLock();
   private Timer timer;
-  private final Properties props = new Properties();
 
   @Inject
-  public Extractor(ExtractorSettings configData) {
-    timer = null;
+  public Extractor(ExtractorSettings configData, StatisticsWriter writer) {
+    this.writer = writer;
     this.configData = configData;
-    props.put("username", "sa");
-    props.put("password", "whatever");
+
+    mbsc = getMBeanServerConnection();
+
+    logger.info("Extracting JMX Statistics to directory {}", configData.getFolderLocation());
+
+    if (isPeriodicallyExtracting()) {
+      periodicallyExtract();
+    } else {
+      extract();
+    }
+  }
+
+  private MBeanServerConnection getMBeanServerConnection() {
+    MBeanServerConnection jmxConn;
 
     if (configData.getUrl() == null || configData.getUrl().isEmpty()) {
-      mbsc = ManagementFactory.getPlatformMBeanServer();
+      jmxConn = ManagementFactory.getPlatformMBeanServer();
     } else {
-      JMXServiceURL url = null;
+      JMXServiceURL url;
       try {
         url = new JMXServiceURL(configData.getUrl());
       } catch (MalformedURLException e) {
@@ -85,25 +81,13 @@ public final class Extractor {
       }
 
       try {
-        mbsc = JMXConnectorFactory.connect(url).getMBeanServerConnection();
+        jmxConn = JMXConnectorFactory.connect(url).getMBeanServerConnection();
       } catch (IOException e) {
         logger.error(e.getMessage(), e);
         throw new RuntimeException(e);
       }
     }
-
-    hsql = new HypersqlHandler();
-	hsql.loadDriver(hsql.getDriver());
-    String statsDirectory = configData.getFolderLocation();
-
-    logger.info("Extracting JMX Statistics to directory {}", statsDirectory);
-
-    dbName = statsDirectory + File.separator + "Extractor" + new SimpleDateFormat("yyyyMMddHHmmss").format(new java.util.Date());
-    if (isPeriodicallyExtracting()) {
-      periodicallyExtract();
-    } else {
-      extract();
-    }
+    return jmxConn;
   }
 
   private void periodicallyExtract() {
@@ -120,86 +104,67 @@ public final class Extractor {
 
   void extract() {
 
-    connLock.lock();
     try {
-        conn = hsql.connectDatabase(dbName, props);
+      writer.startWritingStatistics();
 
-      for (MBeanData bdata : this.configData.getBeans()) {
-        Map<Attribute, Object> result = null;
-        if (bdata.isEnable()) {
-          if (!bdata.isPattern()) {
-            result = MBeanExtract.extract(bdata, mbsc);
-            bd.export2DB(conn, bdata, result);
+      for (MBeanData beanData : this.configData.getBeans()) {
+        if (beanData.isEnable()) {
+          if (!beanData.isPattern()) {
+            writeStatistics(beanData);
+
           } else {
-            String originalName = bdata.getName();
-            ObjectName on;
+            String originalName = beanData.getName();
             try {
-              on = new ObjectName(bdata.getName());
-            } catch (MalformedObjectNameException ex) {
-              logger.error("Non standard name for Objectname " + bdata.getName(), ex);
-              continue;
-            }
-            try {
-              for (ObjectInstance oi : mbsc.queryMBeans(on, null)) {
+
+              for (ObjectInstance oi : getObjectInstances(beanData)) {
                 String actual = oi.getObjectName().getCanonicalName();
-                bdata.setName(actual);
-                bdata.setAlias(MultiLayeredAttribute.name2alias(actual));
-                result = MBeanExtract.extract(bdata, mbsc);
-                bd.export2DB(conn, bdata, result);
+                beanData.setName(actual);
+                beanData.setAlias(MultiLayeredAttribute.name2alias(actual));
+                writeStatistics(beanData);
               }
             } catch (IOException ex) {
               logger.error("Error while trying to access MBean Server", ex);
             }
-            bdata.setName(originalName);
+            beanData.setName(originalName);
           }
         }
       }
 
-//      try {
-        hsql.shutdownDatabase(conn);
-//      } catch (SQLException e) {
-//        logger.error(e.getMessage(), e);
-//      }
-
-      HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-      conn = null;
-    } catch (SQLException ex) {
+    } catch (StatisticsWriterException ex) {
       logger.error("Error while importing to HSQL", ex);
-      throw new RuntimeException(ex);
-    } catch (DBException ex) {
-      logger.error("Error while importing to HSQL", ex);
-      throw new RuntimeException(ex);
     } finally {
-      connLock.unlock();
+      writer.doneWritingStatistics();
     }
     logger.info("Extracted");
+  }
+
+  private Set<ObjectInstance> getObjectInstances(MBeanData beanData) throws IOException {
+    Set<ObjectInstance> instances;
+    try {
+      ObjectName on = new ObjectName(beanData.getName());
+      instances = mbsc.queryMBeans(on, null);
+
+    } catch (MalformedObjectNameException ex) {
+      logger.error("Non standard name for ObjectName " + beanData.getName(), ex);
+      instances = Collections.emptySet();
+    }
+    return instances;
+  }
+
+  private void writeStatistics(MBeanData beanData) {
+    Map<Attribute, Object> statisticValues = MBeanExtract.extract(beanData, mbsc);
+    writer.writeStatistics(beanData, statisticValues);
   }
 
   public void stop() {
     logger.info("Stopping JMX Statistics Extractor");
 
     if (timer != null) {
-      closeHsqlConnection();
+      writer.close();
       timer.cancel();
     }
 
     logger.info("Stopped JMX Statistics Extractor");
-  }
-
-  private void closeHsqlConnection() {
-    try {
-      connLock.lock();
-      if (conn != null && !conn.isClosed()) {
-        hsql.shutdownDatabase(conn);
-        HypersqlHandler.releaseDatabaseResource(null, null, null, conn);
-      }
-
-    } catch (SQLException ex) {
-      logger.error("Error while closing conn during JVM shutdown", ex);
-
-    } finally {
-      connLock.unlock();
-    }
   }
 
   private class Extract extends TimerTask {
@@ -209,7 +174,7 @@ public final class Extractor {
       Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
         @Override
         public void run() {
-          closeHsqlConnection();
+          writer.close();
         }
       }));
     }

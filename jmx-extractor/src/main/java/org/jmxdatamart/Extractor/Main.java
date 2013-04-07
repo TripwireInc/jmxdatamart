@@ -62,7 +62,7 @@ public class Main {
       return;
     }
 
-    final Extractor extractor = new Extractor(s);
+    final Extractor extractor = new Extractor(s, new StatisticsWriter(s));
 
     Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
       @Override
